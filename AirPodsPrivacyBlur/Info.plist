@@ -8,6 +8,8 @@
     <string>AirPodsPrivacyBlur</string>
     <key>CFBundleIdentifier</key>
     <string>dev.codex.AirPodsPrivacyBlur.visible</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

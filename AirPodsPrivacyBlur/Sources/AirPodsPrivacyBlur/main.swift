@@ -45,6 +45,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.title = "AirPods Blur"
         statusItem.button?.toolTip = "AirPods Privacy Blur"
+        if let logo = loadLogoImage(size: NSSize(width: 18, height: 18)) {
+            statusItem.button?.image = logo
+            statusItem.button?.imagePosition = .imageLeading
+        }
 
         statusItemLabel.isEnabled = false
         angleItem.isEnabled = false
@@ -207,12 +211,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.title = "AirPods Privacy Blur"
+        if let logo = loadLogoImage(size: NSSize(width: 128, height: 128)) {
+            NSApp.applicationIconImage = logo
+        }
         window.level = .floating
         window.center()
         window.isReleasedWhenClosed = false
 
         let titleLabel = NSTextField(labelWithString: "AirPods Privacy Blur is running")
         titleLabel.font = .boldSystemFont(ofSize: 17)
+
+        let headerRow: NSStackView
+        if let logo = loadLogoImage(size: NSSize(width: 56, height: 56)) {
+            let logoView = NSImageView(image: logo)
+            logoView.imageScaling = .scaleProportionallyUpOrDown
+            logoView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                logoView.widthAnchor.constraint(equalToConstant: 56),
+                logoView.heightAnchor.constraint(equalToConstant: 56)
+            ])
+
+            headerRow = NSStackView(views: [logoView, titleLabel])
+            headerRow.orientation = .horizontal
+            headerRow.alignment = .centerY
+            headerRow.spacing = 14
+        } else {
+            headerRow = NSStackView(views: [titleLabel])
+            headerRow.orientation = .horizontal
+            headerRow.alignment = .centerY
+        }
 
         let bodyLabel = NSTextField(wrappingLabelWithString: "Use the buttons below, or the AirPods Blur item in the menu bar. Test Blur works even before AirPods motion data is available.")
         bodyLabel.textColor = .secondaryLabelColor
@@ -235,7 +262,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buttonRow.spacing = 10
         buttonRow.distribution = .fillEqually
 
-        let stack = NSStackView(views: [titleLabel, bodyLabel, buttonRow])
+        let stack = NSStackView(views: [headerRow, bodyLabel, buttonRow])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -256,6 +283,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         }
+    }
+
+    private func loadLogoImage(size: NSSize) -> NSImage? {
+        guard
+            let path = Bundle.main.path(forResource: "logo", ofType: "png"),
+            let image = NSImage(contentsOfFile: path)
+        else {
+            return nil
+        }
+
+        image.size = size
+        return image
     }
 }
 
