@@ -8,10 +8,13 @@ EXECUTABLE="$ROOT_DIR/.build/release/AirPodsPrivacyBlur"
 LOGO="$ROOT_DIR/Resources/logo.png"
 ROUNDED_LOGO="$ROOT_DIR/Resources/logo-rounded.png"
 APP_ICON="$ROOT_DIR/Resources/AppIcon.icns"
+ICON_TOOL="$ROOT_DIR/.build/tools/make_app_icon"
 
 cd "$ROOT_DIR"
 if [ -f "$LOGO" ]; then
-    swift "$ROOT_DIR/scripts/make_app_icon.swift" "$LOGO" "$APP_ICON" "$ROUNDED_LOGO"
+    mkdir -p "$(dirname "$ICON_TOOL")"
+    xcrun swiftc "$ROOT_DIR/scripts/make_app_icon.swift" -framework AppKit -o "$ICON_TOOL"
+    "$ICON_TOOL" "$LOGO" "$APP_ICON" "$ROUNDED_LOGO"
 fi
 
 swift build -c release
