@@ -286,10 +286,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func loadLogoImage(size: NSSize) -> NSImage? {
-        guard
-            let path = Bundle.main.path(forResource: "logo", ofType: "png"),
-            let image = NSImage(contentsOfFile: path)
-        else {
+        let path = Bundle.main.path(forResource: "logo-rounded", ofType: "png")
+            ?? Bundle.main.path(forResource: "logo", ofType: "png")
+
+        guard let path, let image = NSImage(contentsOfFile: path) else {
             return nil
         }
 

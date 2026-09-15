@@ -2,4 +2,4 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$ROOT_DIR/dist/AirPods Privacy Blur.app/Contents/MacOS/AirPodsPrivacyBlur"
+open "$ROOT_DIR/dist/AirPods Privacy Blur.app"

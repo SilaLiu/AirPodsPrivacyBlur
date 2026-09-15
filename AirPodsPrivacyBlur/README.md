@@ -37,6 +37,8 @@ You can also launch it from Terminal:
 ./run_app.sh
 ```
 
+Launch through `./run_app.sh` or by opening the `.app` bundle. Avoid running `Contents/MacOS/AirPodsPrivacyBlur` directly, because macOS may not attach the app bundle privacy metadata correctly for Motion permission checks.
+
 ## Current Behavior
 
 - Uses AirPods yaw motion to detect when you turn away from the calibrated forward direction.
