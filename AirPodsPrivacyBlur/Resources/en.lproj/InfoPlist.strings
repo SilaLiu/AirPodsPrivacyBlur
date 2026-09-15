@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "AirPods Privacy Blur";
+"CFBundleName" = "AirPods Privacy Blur";
+"NSMotionUsageDescription" = "AirPods Privacy Blur uses AirPods head motion to blur your screen when you turn away.";

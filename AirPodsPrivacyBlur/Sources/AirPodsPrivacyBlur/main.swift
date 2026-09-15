@@ -2,6 +2,10 @@ import AppKit
 import CoreMotion
 import Foundation
 
+func L(_ key: String) -> String {
+    NSLocalizedString(key, comment: "")
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
@@ -11,16 +15,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controlWindow: NSWindow?
 
     private let statusMenu = NSMenu()
-    private let statusItemLabel = NSMenuItem(title: "Starting...", action: nil, keyEquivalent: "")
-    private let angleItem = NSMenuItem(title: "Angle: --", action: nil, keyEquivalent: "")
-    private let enabledItem = NSMenuItem(title: "Protection Enabled", action: #selector(toggleEnabled), keyEquivalent: "")
-    private let showWindowItem = NSMenuItem(title: "Show Control Window", action: #selector(showControlWindowAction), keyEquivalent: "")
-    private let trackingItem = NSMenuItem(title: "Start AirPods Tracking", action: #selector(toggleTracking), keyEquivalent: "")
-    private let calibrateItem = NSMenuItem(title: "Calibrate Facing Screen", action: #selector(calibrate), keyEquivalent: "")
-    private let testBlurItem = NSMenuItem(title: "Test Blur for 5 Seconds", action: #selector(testBlur), keyEquivalent: "")
-    private let sensitivityItem = NSMenuItem(title: "Sensitivity: Medium", action: nil, keyEquivalent: "")
+    private let statusItemLabel = NSMenuItem(title: L("status.starting"), action: nil, keyEquivalent: "")
+    private let angleItem = NSMenuItem(title: L("angle.empty"), action: nil, keyEquivalent: "")
+    private let enabledItem = NSMenuItem(title: L("menu.protection.enabled"), action: #selector(toggleEnabled), keyEquivalent: "")
+    private let showWindowItem = NSMenuItem(title: L("menu.show.window"), action: #selector(showControlWindowAction), keyEquivalent: "")
+    private let trackingItem = NSMenuItem(title: L("menu.tracking.start"), action: #selector(toggleTracking), keyEquivalent: "")
+    private let calibrateItem = NSMenuItem(title: L("menu.calibrate"), action: #selector(calibrate), keyEquivalent: "")
+    private let testBlurItem = NSMenuItem(title: L("menu.test.blur"), action: #selector(testBlur), keyEquivalent: "")
+    private let sensitivityItem = NSMenuItem(title: String(format: L("menu.sensitivity.current"), Sensitivity.medium.title), action: nil, keyEquivalent: "")
     private var testBlurTimer: Timer?
     private var isTracking = false
+    private var trackingButton: NSButton?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("AirPodsPrivacyBlur did finish launching")
@@ -28,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusMenu()
         configureMotionCallbacks()
         showControlWindow()
-        statusItemLabel.title = "Ready. Start AirPods tracking when connected."
+        statusItemLabel.title = L("status.ready")
         NSLog("AirPodsPrivacyBlur control window requested")
     }
 
@@ -43,8 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureStatusMenu() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "AirPods Blur"
-        statusItem.button?.toolTip = "AirPods Privacy Blur"
+        statusItem.button?.title = L("app.menu.title")
+        statusItem.button?.toolTip = L("app.name")
         if let logo = loadLogoImage(size: NSSize(width: 18, height: 18)) {
             statusItem.button?.image = logo
             statusItem.button?.imagePosition = .imageLeading
@@ -71,7 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu.addItem(sensitivityItem)
         statusMenu.addItem(makeSensitivitySubmenu())
         statusMenu.addItem(NSMenuItem.separator())
-        statusMenu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
+        statusMenu.addItem(NSMenuItem(title: L("menu.quit"), action: #selector(quit), keyEquivalent: "q"))
         statusMenu.items.last?.target = self
 
         statusItem.menu = statusMenu
@@ -79,7 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func makeSensitivitySubmenu() -> NSMenuItem {
-        let root = NSMenuItem(title: "Set Sensitivity", action: nil, keyEquivalent: "")
+        let root = NSMenuItem(title: L("menu.sensitivity.set"), action: nil, keyEquivalent: "")
         let submenu = NSMenu()
 
         for level in Sensitivity.allCases {
@@ -104,23 +109,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItemLabel.title = state.statusText
 
         if let degrees = state.yawDegrees {
-            angleItem.title = String(format: "Yaw: %.1f°", degrees)
+            angleItem.title = String(format: L("angle.value"), degrees)
         } else {
-            angleItem.title = "Yaw: --"
+            angleItem.title = L("angle.empty")
         }
 
         guard preferences.isEnabled else {
             blurOverlay.hide()
-            statusItem.button?.title = "AirPods Blur"
+            statusItem.button?.title = L("app.menu.title")
             return
         }
 
         if state.shouldBlur {
             blurOverlay.show()
-            statusItem.button?.title = "Blurred"
+            statusItem.button?.title = L("statusItem.blurred")
         } else {
             blurOverlay.hide()
-            statusItem.button?.title = "AirPods Blur"
+            statusItem.button?.title = L("app.menu.title")
         }
     }
 
@@ -140,14 +145,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if isTracking {
             headPoseMonitor.stop()
             isTracking = false
-            trackingItem.title = "Start AirPods Tracking"
-            statusItemLabel.title = "Tracking stopped"
+            trackingItem.title = L("menu.tracking.start")
+            trackingButton?.title = L("menu.tracking.start")
+            statusItemLabel.title = L("status.tracking.stopped")
             return
         }
 
         isTracking = true
-        trackingItem.title = "Stop AirPods Tracking"
-        statusItemLabel.title = "Starting AirPods tracking..."
+        trackingItem.title = L("menu.tracking.stop")
+        trackingButton?.title = L("menu.tracking.stop")
+        statusItemLabel.title = L("status.tracking.starting")
         headPoseMonitor.start()
     }
 
@@ -158,11 +165,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func testBlur() {
         testBlurTimer?.invalidate()
         blurOverlay.show()
-        statusItem.button?.title = "Blurred"
+        statusItem.button?.title = L("statusItem.blurred")
         testBlurTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 self?.blurOverlay.hide()
-                self?.statusItem.button?.title = "AirPods Blur"
+                self?.statusItem.button?.title = L("app.menu.title")
             }
         }
     }
@@ -188,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateSensitivityTitle() {
-        sensitivityItem.title = "Sensitivity: \(preferences.sensitivity.title)"
+        sensitivityItem.title = String(format: L("menu.sensitivity.current"), preferences.sensitivity.title)
         headPoseMonitor.updateThresholds(preferences.sensitivity.thresholds)
     }
 
@@ -210,7 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "AirPods Privacy Blur"
+        window.title = L("window.title")
         if let logo = loadLogoImage(size: NSSize(width: 128, height: 128)) {
             NSApp.applicationIconImage = logo
         }
@@ -218,7 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.isReleasedWhenClosed = false
 
-        let titleLabel = NSTextField(labelWithString: "AirPods Privacy Blur is running")
+        let titleLabel = NSTextField(labelWithString: L("window.heading"))
         titleLabel.font = .boldSystemFont(ofSize: 17)
 
         let headerRow: NSStackView
@@ -241,20 +248,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             headerRow.alignment = .centerY
         }
 
-        let bodyLabel = NSTextField(wrappingLabelWithString: "Use the buttons below, or the AirPods Blur item in the menu bar. Test Blur works even before AirPods motion data is available.")
+        let bodyLabel = NSTextField(wrappingLabelWithString: L("window.body"))
         bodyLabel.textColor = .secondaryLabelColor
         bodyLabel.maximumNumberOfLines = 3
 
-        let trackingButton = NSButton(title: "Start AirPods Tracking", target: self, action: #selector(toggleTracking))
+        let trackingButton = NSButton(title: L("menu.tracking.start"), target: self, action: #selector(toggleTracking))
         trackingButton.bezelStyle = .rounded
+        self.trackingButton = trackingButton
 
-        let testButton = NSButton(title: "Test Blur for 5 Seconds", target: self, action: #selector(testBlur))
+        let testButton = NSButton(title: L("menu.test.blur"), target: self, action: #selector(testBlur))
         testButton.bezelStyle = .rounded
 
-        let calibrateButton = NSButton(title: "Calibrate Facing Screen", target: self, action: #selector(calibrate))
+        let calibrateButton = NSButton(title: L("menu.calibrate"), target: self, action: #selector(calibrate))
         calibrateButton.bezelStyle = .rounded
 
-        let quitButton = NSButton(title: "Quit", target: self, action: #selector(quit))
+        let quitButton = NSButton(title: L("menu.quit"), target: self, action: #selector(quit))
         quitButton.bezelStyle = .rounded
 
         let buttonRow = NSStackView(views: [trackingButton, testButton, calibrateButton, quitButton])
@@ -314,7 +322,7 @@ final class HeadPoseMonitor {
         self.manager = manager
 
         guard manager.isDeviceMotionAvailable else {
-            onStateChange?(HeadPoseState(statusText: "AirPods motion unavailable", yawDegrees: nil, shouldBlur: false))
+            onStateChange?(HeadPoseState(statusText: L("status.motion.unavailable"), yawDegrees: nil, shouldBlur: false))
             return
         }
 
@@ -327,7 +335,7 @@ final class HeadPoseMonitor {
             }
 
             guard let motion else {
-                self.onStateChange?(HeadPoseState(statusText: "Waiting for AirPods motion...", yawDegrees: nil, shouldBlur: false))
+                self.onStateChange?(HeadPoseState(statusText: L("status.motion.waiting"), yawDegrees: nil, shouldBlur: false))
                 return
             }
 
@@ -345,7 +353,7 @@ final class HeadPoseMonitor {
     func calibrateFacingScreen() {
         guard let motion = latestMotion else {
             baselineYaw = nil
-            onStateChange?(HeadPoseState(statusText: "Wear AirPods, then calibrate", yawDegrees: nil, shouldBlur: false))
+            onStateChange?(HeadPoseState(statusText: L("status.motion.calibrate.first"), yawDegrees: nil, shouldBlur: false))
             return
         }
 
@@ -374,7 +382,7 @@ final class HeadPoseMonitor {
             isBlurred = absoluteYaw >= blurEnterThreshold
         }
 
-        let status = String(format: "Facing baseline: %.1f°", yawDegrees)
+        let status = String(format: L("status.facing.baseline"), yawDegrees)
         onStateChange?(HeadPoseState(statusText: status, yawDegrees: yawDegrees, shouldBlur: isBlurred))
     }
 
@@ -464,7 +472,7 @@ final class PrivacyBlurOverlay {
             dimView.wantsLayer = true
             dimView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.38).cgColor
 
-            let label = NSTextField(labelWithString: "Privacy Blur Active")
+            let label = NSTextField(labelWithString: L("overlay.active"))
             label.font = .boldSystemFont(ofSize: 32)
             label.textColor = .white
             label.alignment = .center
@@ -574,11 +582,11 @@ enum Sensitivity: String, CaseIterable {
     var title: String {
         switch self {
         case .high:
-            "High"
+            L("sensitivity.high")
         case .medium:
-            "Medium"
+            L("sensitivity.medium")
         case .low:
-            "Low"
+            L("sensitivity.low")
         }
     }
 

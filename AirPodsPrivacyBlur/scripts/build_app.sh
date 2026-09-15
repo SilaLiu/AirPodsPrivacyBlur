@@ -23,7 +23,8 @@ cp "$ROOT_DIR/Info.plist" "$APP_DIR/Contents/Info.plist"
 printf "APPL????" > "$APP_DIR/Contents/PkgInfo"
 
 if [ -d "$ROOT_DIR/Resources" ]; then
-    find "$ROOT_DIR/Resources" -maxdepth 1 -type f -exec cp {} "$APP_DIR/Contents/Resources/" \;
+    find "$ROOT_DIR/Resources" -maxdepth 1 -type f ! -name ".DS_Store" -exec cp {} "$APP_DIR/Contents/Resources/" \;
+    find "$ROOT_DIR/Resources" -maxdepth 1 -type d -name "*.lproj" -exec cp -R {} "$APP_DIR/Contents/Resources/" \;
 fi
 
 if command -v codesign >/dev/null 2>&1; then
