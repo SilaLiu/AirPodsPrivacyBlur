@@ -14,6 +14,7 @@
 "angle.value" = "Yaw: %.1f°";
 "menu.protection.enabled" = "Protection Enabled";
 "menu.show.window" = "Show Control Window";
+"menu.settings" = "Settings...";
 "menu.tracking.start" = "Start AirPods Tracking";
 "menu.tracking.stop" = "Stop AirPods Tracking";
 "menu.calibrate" = "Calibrate Facing Screen";
@@ -24,6 +25,12 @@
 "sensitivity.high" = "High";
 "sensitivity.medium" = "Medium";
 "sensitivity.low" = "Low";
+"language.system" = "Follow System";
+"language.chinese" = "Chinese";
+"language.english" = "English";
+"settings.title" = "Settings";
+"settings.heading" = "Settings";
+"settings.language" = "Language";
 "window.title" = "AirPods Privacy Blur";
 "window.heading" = "AirPods Privacy Blur is running";
 "window.body" = "Use the buttons below, or the AirPods Blur item in the menu bar. Test Blur works even before AirPods motion data is available.";

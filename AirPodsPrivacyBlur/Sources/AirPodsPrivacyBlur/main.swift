@@ -3,11 +3,20 @@ import CoreMotion
 import Foundation
 
 func L(_ key: String) -> String {
-    NSLocalizedString(key, comment: "")
+    let selectedLanguage = UserDefaults.standard.string(forKey: AppLanguage.userDefaultsKey) ?? AppLanguage.system.rawValue
+    if
+        selectedLanguage != AppLanguage.system.rawValue,
+        let languageBundleURL = Bundle.main.url(forResource: selectedLanguage, withExtension: "lproj"),
+        let languageBundle = Bundle(url: languageBundleURL)
+    {
+        return languageBundle.localizedString(forKey: key, value: nil, table: nil)
+    }
+
+    return NSLocalizedString(key, comment: "")
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private let blurOverlay = PrivacyBlurOverlay()
     private let headPoseMonitor = HeadPoseMonitor()
@@ -19,13 +28,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let angleItem = NSMenuItem(title: L("angle.empty"), action: nil, keyEquivalent: "")
     private let enabledItem = NSMenuItem(title: L("menu.protection.enabled"), action: #selector(toggleEnabled), keyEquivalent: "")
     private let showWindowItem = NSMenuItem(title: L("menu.show.window"), action: #selector(showControlWindowAction), keyEquivalent: "")
+    private let settingsItem = NSMenuItem(title: L("menu.settings"), action: #selector(showSettingsWindowAction), keyEquivalent: ",")
     private let trackingItem = NSMenuItem(title: L("menu.tracking.start"), action: #selector(toggleTracking), keyEquivalent: "")
     private let calibrateItem = NSMenuItem(title: L("menu.calibrate"), action: #selector(calibrate), keyEquivalent: "")
     private let testBlurItem = NSMenuItem(title: L("menu.test.blur"), action: #selector(testBlur), keyEquivalent: "")
     private let sensitivityItem = NSMenuItem(title: String(format: L("menu.sensitivity.current"), Sensitivity.medium.title), action: nil, keyEquivalent: "")
+    private let sensitivityRootItem = NSMenuItem(title: L("menu.sensitivity.set"), action: nil, keyEquivalent: "")
+    private let quitItem = NSMenuItem(title: L("menu.quit"), action: #selector(quit), keyEquivalent: "q")
     private var testBlurTimer: Timer?
     private var isTracking = false
     private var trackingButton: NSButton?
+    private var settingsWindow: NSWindow?
+    private var lastState: HeadPoseState?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("AirPodsPrivacyBlur did finish launching")
@@ -60,9 +74,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sensitivityItem.isEnabled = false
         enabledItem.target = self
         showWindowItem.target = self
+        settingsItem.target = self
         trackingItem.target = self
         calibrateItem.target = self
         testBlurItem.target = self
+        quitItem.target = self
         enabledItem.state = preferences.isEnabled ? .on : .off
 
         statusMenu.addItem(statusItemLabel)
@@ -70,21 +86,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu.addItem(NSMenuItem.separator())
         statusMenu.addItem(enabledItem)
         statusMenu.addItem(showWindowItem)
+        statusMenu.addItem(settingsItem)
         statusMenu.addItem(trackingItem)
         statusMenu.addItem(calibrateItem)
         statusMenu.addItem(testBlurItem)
         statusMenu.addItem(sensitivityItem)
-        statusMenu.addItem(makeSensitivitySubmenu())
+        configureSensitivitySubmenu()
+        statusMenu.addItem(sensitivityRootItem)
         statusMenu.addItem(NSMenuItem.separator())
-        statusMenu.addItem(NSMenuItem(title: L("menu.quit"), action: #selector(quit), keyEquivalent: "q"))
-        statusMenu.items.last?.target = self
+        statusMenu.addItem(quitItem)
 
         statusItem.menu = statusMenu
         updateSensitivityTitle()
     }
 
-    private func makeSensitivitySubmenu() -> NSMenuItem {
-        let root = NSMenuItem(title: L("menu.sensitivity.set"), action: nil, keyEquivalent: "")
+    private func configureSensitivitySubmenu() {
+        sensitivityRootItem.title = L("menu.sensitivity.set")
         let submenu = NSMenu()
 
         for level in Sensitivity.allCases {
@@ -95,8 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             submenu.addItem(item)
         }
 
-        root.submenu = submenu
-        return root
+        sensitivityRootItem.submenu = submenu
     }
 
     private func configureMotionCallbacks() {
@@ -106,6 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func render(_ state: HeadPoseState) {
+        lastState = state
         statusItemLabel.title = state.statusText
 
         if let degrees = state.yawDegrees {
@@ -139,6 +156,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showControlWindowAction() {
         showControlWindow()
+    }
+
+    @objc private func showSettingsWindowAction() {
+        showSettingsWindow()
     }
 
     @objc private func toggleTracking() {
@@ -186,17 +207,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         headPoseMonitor.updateThresholds(sensitivity.thresholds)
         updateSensitivityTitle()
 
-        statusMenu.items
-            .compactMap(\.submenu)
-            .flatMap(\.items)
-            .forEach { item in
-                item.state = (item.representedObject as? String) == rawValue ? .on : .off
-            }
+        configureSensitivitySubmenu()
     }
 
     private func updateSensitivityTitle() {
         sensitivityItem.title = String(format: L("menu.sensitivity.current"), preferences.sensitivity.title)
         headPoseMonitor.updateThresholds(preferences.sensitivity.thresholds)
+    }
+
+    private func refreshLocalizedInterface() {
+        statusItem.button?.toolTip = L("app.name")
+        enabledItem.title = L("menu.protection.enabled")
+        showWindowItem.title = L("menu.show.window")
+        settingsItem.title = L("menu.settings")
+        trackingItem.title = isTracking ? L("menu.tracking.stop") : L("menu.tracking.start")
+        trackingButton?.title = trackingItem.title
+        calibrateItem.title = L("menu.calibrate")
+        testBlurItem.title = L("menu.test.blur")
+        updateSensitivityTitle()
+        configureSensitivitySubmenu()
+        quitItem.title = L("menu.quit")
+
+        if let lastState {
+            render(lastState.localizedCopy())
+        } else {
+            statusItemLabel.title = isTracking ? L("status.tracking.starting") : L("status.ready")
+            angleItem.title = L("angle.empty")
+            statusItem.button?.title = L("app.menu.title")
+        }
+
+        let shouldReopenControlWindow = controlWindow?.isVisible == true
+        let shouldReopenSettingsWindow = settingsWindow?.isVisible == true
+
+        if shouldReopenControlWindow {
+            let windowToClose = controlWindow
+            controlWindow = nil
+            trackingButton = nil
+            windowToClose?.close()
+            showControlWindow()
+        }
+
+        if shouldReopenSettingsWindow {
+            let windowToClose = settingsWindow
+            settingsWindow = nil
+            windowToClose?.close()
+            showSettingsWindow()
+        }
     }
 
     @objc private func quit() {
@@ -212,7 +268,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 230),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 300),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -224,6 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.level = .floating
         window.center()
         window.isReleasedWhenClosed = false
+        window.delegate = self
 
         let titleLabel = NSTextField(labelWithString: L("window.heading"))
         titleLabel.font = .boldSystemFont(ofSize: 17)
@@ -262,15 +319,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let calibrateButton = NSButton(title: L("menu.calibrate"), target: self, action: #selector(calibrate))
         calibrateButton.bezelStyle = .rounded
 
+        let settingsButton = NSButton(title: L("menu.settings"), target: self, action: #selector(showSettingsWindowAction))
+        settingsButton.bezelStyle = .rounded
+
         let quitButton = NSButton(title: L("menu.quit"), target: self, action: #selector(quit))
         quitButton.bezelStyle = .rounded
 
-        let buttonRow = NSStackView(views: [trackingButton, testButton, calibrateButton, quitButton])
-        buttonRow.orientation = .horizontal
-        buttonRow.spacing = 10
-        buttonRow.distribution = .fillEqually
+        let primaryButtonRow = NSStackView(views: [trackingButton, testButton, calibrateButton])
+        primaryButtonRow.orientation = .horizontal
+        primaryButtonRow.spacing = 10
+        primaryButtonRow.distribution = .fillEqually
 
-        let stack = NSStackView(views: [headerRow, bodyLabel, buttonRow])
+        let secondaryButtonRow = NSStackView(views: [settingsButton, quitButton])
+        secondaryButtonRow.orientation = .horizontal
+        secondaryButtonRow.spacing = 10
+        secondaryButtonRow.distribution = .fillEqually
+
+        let stack = NSStackView(views: [headerRow, bodyLabel, primaryButtonRow, secondaryButtonRow])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -282,7 +347,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 24),
             stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -24),
             stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 32),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -24)
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -24),
+            primaryButtonRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            secondaryButtonRow.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
 
         controlWindow = window
@@ -290,6 +357,100 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private func showSettingsWindow() {
+        if let settingsWindow {
+            settingsWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 160),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = L("settings.title")
+        window.level = .floating
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+
+        let titleLabel = NSTextField(labelWithString: L("settings.heading"))
+        titleLabel.font = .boldSystemFont(ofSize: 16)
+
+        let languageLabel = NSTextField(labelWithString: L("settings.language"))
+        languageLabel.textColor = .secondaryLabelColor
+
+        let languagePopup = NSPopUpButton()
+        for language in AppLanguage.allCases {
+            languagePopup.addItem(withTitle: language.title)
+            languagePopup.lastItem?.representedObject = language.rawValue
+        }
+        selectLanguagePopupItem(languagePopup)
+        languagePopup.target = self
+        languagePopup.action = #selector(selectLanguageFromPopup(_:))
+
+        let languageRow = NSStackView(views: [languageLabel, languagePopup])
+        languageRow.orientation = .horizontal
+        languageRow.alignment = .centerY
+        languageRow.spacing = 12
+        languagePopup.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        languageLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+
+        let stack = NSStackView(views: [titleLabel, languageRow])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 18
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let container = NSView()
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -24),
+            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 24),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -24),
+            languagePopup.widthAnchor.constraint(greaterThanOrEqualToConstant: 180)
+        ])
+
+        settingsWindow = window
+        window.contentView = container
+        DispatchQueue.main.async {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        if window === controlWindow {
+            controlWindow = nil
+            trackingButton = nil
+        } else if window === settingsWindow {
+            settingsWindow = nil
+        }
+    }
+
+    @objc private func selectLanguageFromPopup(_ sender: NSPopUpButton) {
+        guard
+            let rawValue = sender.selectedItem?.representedObject as? String,
+            let language = AppLanguage(rawValue: rawValue)
+        else {
+            return
+        }
+
+        preferences.appLanguage = language
+        refreshLocalizedInterface()
+    }
+
+    private func selectLanguagePopupItem(_ popup: NSPopUpButton) {
+        for item in popup.itemArray where item.representedObject as? String == preferences.appLanguage.rawValue {
+            popup.select(item)
+            return
         }
     }
 
@@ -406,6 +567,18 @@ struct HeadPoseState {
     let statusText: String
     let yawDegrees: Double?
     let shouldBlur: Bool
+
+    func localizedCopy() -> HeadPoseState {
+        guard let yawDegrees else {
+            return self
+        }
+
+        return HeadPoseState(
+            statusText: String(format: L("status.facing.baseline"), yawDegrees),
+            yawDegrees: yawDegrees,
+            shouldBlur: shouldBlur
+        )
+    }
 }
 
 @MainActor
@@ -544,6 +717,7 @@ final class Preferences {
     private enum Keys {
         static let isEnabled = "isEnabled"
         static let sensitivity = "sensitivity"
+        static let appLanguage = AppLanguage.userDefaultsKey
     }
 
     var isEnabled: Bool {
@@ -570,6 +744,40 @@ final class Preferences {
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: Keys.sensitivity)
+        }
+    }
+
+    var appLanguage: AppLanguage {
+        get {
+            guard
+                let rawValue = UserDefaults.standard.string(forKey: Keys.appLanguage),
+                let value = AppLanguage(rawValue: rawValue)
+            else {
+                return .system
+            }
+            return value
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: Keys.appLanguage)
+        }
+    }
+}
+
+enum AppLanguage: String, CaseIterable {
+    static let userDefaultsKey = "appLanguage"
+
+    case system
+    case zhHans = "zh-Hans"
+    case en
+
+    var title: String {
+        switch self {
+        case .system:
+            L("language.system")
+        case .zhHans:
+            L("language.chinese")
+        case .en:
+            L("language.english")
         }
     }
 }
