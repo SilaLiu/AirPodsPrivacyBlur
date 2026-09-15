@@ -31,6 +31,9 @@
 "settings.title" = "Settings";
 "settings.heading" = "Settings";
 "settings.language" = "Language";
+"settings.blurStyle" = "Blur Style";
+"blurStyle.softGlass" = "Soft Glass";
+"blurStyle.bookFlip" = "Page Turn Glass";
 "window.title" = "AirPods Privacy Blur";
 "window.heading" = "AirPods Privacy Blur is running";
 "window.body" = "Use the buttons below, or the AirPods Blur item in the menu bar. Test Blur works even before AirPods motion data is available.";

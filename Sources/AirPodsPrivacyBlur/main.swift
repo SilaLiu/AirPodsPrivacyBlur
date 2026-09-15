@@ -1,6 +1,7 @@
 import AppKit
 import CoreMotion
 import Foundation
+import QuartzCore
 
 func L(_ key: String) -> String {
     let selectedLanguage = UserDefaults.standard.string(forKey: AppLanguage.userDefaultsKey) ?? AppLanguage.system.rawValue
@@ -44,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("AirPodsPrivacyBlur did finish launching")
         NSApp.setActivationPolicy(.regular)
+        blurOverlay.updateStyle(preferences.blurStyle)
         configureStatusMenu()
         configureMotionCallbacks()
         showControlWindow()
@@ -368,7 +370,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 160),
+            contentRect: NSRect(x: 0, y: 0, width: 390, height: 220),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -401,7 +403,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         languagePopup.setContentHuggingPriority(.defaultLow, for: .horizontal)
         languageLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
 
-        let stack = NSStackView(views: [titleLabel, languageRow])
+        let blurStyleLabel = NSTextField(labelWithString: L("settings.blurStyle"))
+        blurStyleLabel.textColor = .secondaryLabelColor
+
+        let blurStylePopup = NSPopUpButton()
+        for style in BlurStyle.allCases {
+            blurStylePopup.addItem(withTitle: style.title)
+            blurStylePopup.lastItem?.representedObject = style.rawValue
+        }
+        selectBlurStylePopupItem(blurStylePopup)
+        blurStylePopup.target = self
+        blurStylePopup.action = #selector(selectBlurStyleFromPopup(_:))
+
+        let blurStyleRow = NSStackView(views: [blurStyleLabel, blurStylePopup])
+        blurStyleRow.orientation = .horizontal
+        blurStyleRow.alignment = .centerY
+        blurStyleRow.spacing = 12
+        blurStylePopup.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        blurStyleLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+
+        let stack = NSStackView(views: [titleLabel, languageRow, blurStyleRow])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 18
@@ -414,7 +435,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -24),
             stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 24),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -24),
-            languagePopup.widthAnchor.constraint(greaterThanOrEqualToConstant: 180)
+            languagePopup.widthAnchor.constraint(greaterThanOrEqualToConstant: 180),
+            blurStylePopup.widthAnchor.constraint(equalTo: languagePopup.widthAnchor)
         ])
 
         settingsWindow = window
@@ -447,8 +469,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         refreshLocalizedInterface()
     }
 
+    @objc private func selectBlurStyleFromPopup(_ sender: NSPopUpButton) {
+        guard
+            let rawValue = sender.selectedItem?.representedObject as? String,
+            let style = BlurStyle(rawValue: rawValue)
+        else {
+            return
+        }
+
+        preferences.blurStyle = style
+        blurOverlay.updateStyle(style)
+    }
+
     private func selectLanguagePopupItem(_ popup: NSPopUpButton) {
         for item in popup.itemArray where item.representedObject as? String == preferences.appLanguage.rawValue {
+            popup.select(item)
+            return
+        }
+    }
+
+    private func selectBlurStylePopupItem(_ popup: NSPopUpButton) {
+        for item in popup.itemArray where item.representedObject as? String == preferences.blurStyle.rawValue {
             popup.select(item)
             return
         }
@@ -586,8 +627,11 @@ final class PrivacyBlurOverlay {
     private var panels: [NSPanel] = []
     private var isShowing = false
     private var isFadingOut = false
-    private let fadeInDuration: TimeInterval = 0.22
-    private let fadeOutDuration: TimeInterval = 0.34
+    private var style: BlurStyle = .bookFlip
+    private let fadeInDuration: TimeInterval = 0.28
+    private let fadeOutDuration: TimeInterval = 0.36
+    private let bookFlipInDuration: TimeInterval = 0.44
+    private let bookFlipOutDuration: TimeInterval = 0.30
 
     init() {
         NotificationCenter.default.addObserver(
@@ -602,69 +646,26 @@ final class PrivacyBlurOverlay {
         NotificationCenter.default.removeObserver(self)
     }
 
+    func updateStyle(_ newStyle: BlurStyle) {
+        guard style != newStyle else { return }
+        style = newStyle
+
+        if isShowing {
+            removePanels()
+            show()
+        }
+    }
+
     func show() {
         isShowing = true
         isFadingOut = false
         if !panels.isEmpty {
-            animatePanels(to: 1, duration: fadeInDuration)
+            animatePanelsIn()
             return
         }
 
-        panels = NSScreen.screens.map { screen in
-            let screenFrame = screen.frame
-            let localBounds = NSRect(origin: .zero, size: screenFrame.size)
-            let panel = NSPanel(
-                contentRect: screenFrame,
-                styleMask: [.borderless, .nonactivatingPanel],
-                backing: .buffered,
-                defer: false,
-                screen: screen
-            )
-
-            panel.level = .screenSaver
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-            panel.backgroundColor = .clear
-            panel.isOpaque = false
-            panel.alphaValue = 0
-            panel.hasShadow = false
-            panel.ignoresMouseEvents = true
-            panel.hidesOnDeactivate = false
-            panel.setFrame(screenFrame, display: true)
-
-            let container = NSView(frame: localBounds)
-            container.autoresizingMask = [.width, .height]
-
-            let blurView = NSVisualEffectView(frame: localBounds)
-            blurView.autoresizingMask = [.width, .height]
-            blurView.blendingMode = .behindWindow
-            blurView.material = .hudWindow
-            blurView.state = .active
-
-            let dimView = NSView(frame: localBounds)
-            dimView.autoresizingMask = [.width, .height]
-            dimView.wantsLayer = true
-            dimView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.38).cgColor
-
-            let label = NSTextField(labelWithString: L("overlay.active"))
-            label.font = .boldSystemFont(ofSize: 32)
-            label.textColor = .white
-            label.alignment = .center
-            label.translatesAutoresizingMaskIntoConstraints = false
-
-            container.addSubview(blurView)
-            container.addSubview(dimView)
-            container.addSubview(label)
-            NSLayoutConstraint.activate([
-                label.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-                label.centerYAnchor.constraint(equalTo: container.centerYAnchor)
-            ])
-            panel.contentView = container
-            panel.orderFrontRegardless()
-
-            return panel
-        }
-
-        animatePanels(to: 1, duration: fadeInDuration)
+        panels = NSScreen.screens.map(makePanel)
+        animatePanelsIn()
     }
 
     func hide() {
@@ -672,6 +673,17 @@ final class PrivacyBlurOverlay {
         let panelsToHide = panels
         guard !panelsToHide.isEmpty, !isFadingOut else { return }
         isFadingOut = true
+
+        if style == .bookFlip {
+            animateBookFlipOut(panelsToHide) { [weak self] in
+                guard let self else { return }
+                self.isFadingOut = false
+                if !self.isShowing {
+                    self.removePanels()
+                }
+            }
+            return
+        }
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = fadeOutDuration
@@ -688,6 +700,190 @@ final class PrivacyBlurOverlay {
                 }
             }
         }
+    }
+
+    private func makePanel(for screen: NSScreen) -> NSPanel {
+        let screenFrame = screen.frame
+        let localBounds = NSRect(origin: .zero, size: screenFrame.size)
+        let panel = NSPanel(
+            contentRect: screenFrame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false,
+            screen: screen
+        )
+
+        panel.level = .screenSaver
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.alphaValue = style == .bookFlip ? 1 : 0
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        panel.hidesOnDeactivate = false
+        panel.setFrame(screenFrame, display: true)
+
+        let container = makeContentView(frame: localBounds)
+        if style == .bookFlip {
+            prepareBookFlipStart(container)
+        }
+
+        panel.contentView = container
+        panel.orderFrontRegardless()
+        return panel
+    }
+
+    private func makeContentView(frame: NSRect) -> NSView {
+        let container = NSView(frame: frame)
+        container.autoresizingMask = [.width, .height]
+        container.wantsLayer = true
+        container.layer?.masksToBounds = true
+
+        let blurView = NSVisualEffectView(frame: frame)
+        blurView.autoresizingMask = [.width, .height]
+        blurView.blendingMode = .behindWindow
+        blurView.material = style.material
+        blurView.state = .active
+
+        let tintView = NSView(frame: frame)
+        tintView.autoresizingMask = [.width, .height]
+        tintView.wantsLayer = true
+        tintView.layer?.backgroundColor = style.tintColor.cgColor
+
+        let dimView = NSView(frame: frame)
+        dimView.autoresizingMask = [.width, .height]
+        dimView.wantsLayer = true
+        dimView.layer?.backgroundColor = NSColor.black.withAlphaComponent(style.dimAlpha).cgColor
+
+        let label = NSTextField(labelWithString: L("overlay.active"))
+        label.font = .boldSystemFont(ofSize: 26)
+        label.textColor = NSColor.white.withAlphaComponent(0.86)
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(blurView)
+        container.addSubview(tintView)
+        container.addSubview(dimView)
+
+        if style == .bookFlip {
+            addBookFlipAccents(to: container, frame: frame)
+        }
+
+        container.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+        ])
+
+        return container
+    }
+
+    private func addBookFlipAccents(to container: NSView, frame: NSRect) {
+        let leadingGlow = NSView(frame: NSRect(x: 0, y: 0, width: 46, height: frame.height))
+        leadingGlow.autoresizingMask = [.height, .maxXMargin]
+        leadingGlow.wantsLayer = true
+        leadingGlow.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.10).cgColor
+
+        let trailingShadow = NSView(frame: NSRect(x: frame.width - 64, y: 0, width: 64, height: frame.height))
+        trailingShadow.autoresizingMask = [.height, .minXMargin]
+        trailingShadow.wantsLayer = true
+        trailingShadow.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.10).cgColor
+
+        container.addSubview(leadingGlow)
+        container.addSubview(trailingShadow)
+    }
+
+    private func animatePanelsIn() {
+        if style == .bookFlip {
+            animateBookFlipIn()
+            return
+        }
+
+        animatePanels(to: 1, duration: fadeInDuration)
+    }
+
+    private func animateBookFlipIn() {
+        panels.forEach { panel in
+            guard let layer = panel.contentView?.layer else {
+                panel.alphaValue = 1
+                return
+            }
+
+            let startTransform = layer.transform
+            let startOpacity = layer.opacity
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.transform = CATransform3DIdentity
+            layer.opacity = 1
+            CATransaction.commit()
+
+            let flip = CABasicAnimation(keyPath: "transform")
+            flip.fromValue = NSValue(caTransform3D: startTransform)
+            flip.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = startOpacity
+            fade.toValue = 1
+
+            let group = CAAnimationGroup()
+            group.animations = [flip, fade]
+            group.duration = bookFlipInDuration
+            group.timingFunction = CAMediaTimingFunction(controlPoints: 0.18, 0.82, 0.22, 1)
+            layer.add(group, forKey: "bookFlipIn")
+        }
+    }
+
+    private func animateBookFlipOut(_ panelsToHide: [NSPanel], completion: @escaping @MainActor () -> Void) {
+        panelsToHide.forEach { panel in
+            guard let layer = panel.contentView?.layer else {
+                panel.alphaValue = 0
+                return
+            }
+
+            let targetTransform = bookFlipTransform(direction: 1)
+            let startTransform = layer.presentation()?.transform ?? layer.transform
+            let startOpacity = layer.presentation()?.opacity ?? layer.opacity
+
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.transform = targetTransform
+            layer.opacity = 0
+            CATransaction.commit()
+
+            let flip = CABasicAnimation(keyPath: "transform")
+            flip.fromValue = NSValue(caTransform3D: startTransform)
+            flip.toValue = NSValue(caTransform3D: targetTransform)
+
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = startOpacity
+            fade.toValue = 0
+
+            let group = CAAnimationGroup()
+            group.animations = [flip, fade]
+            group.duration = bookFlipOutDuration
+            group.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            layer.add(group, forKey: "bookFlipOut")
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + bookFlipOutDuration) {
+            Task { @MainActor in
+                completion()
+            }
+        }
+    }
+
+    private func prepareBookFlipStart(_ view: NSView) {
+        guard let layer = view.layer else { return }
+        layer.opacity = 0
+        layer.transform = bookFlipTransform(direction: -1)
+    }
+
+    private func bookFlipTransform(direction: CGFloat) -> CATransform3D {
+        var transform = CATransform3DIdentity
+        transform.m34 = -1.0 / 900.0
+        transform = CATransform3DRotate(transform, direction * .pi / 12, 0, 1, 0)
+        transform = CATransform3DTranslate(transform, direction * 42, 0, 0)
+        return transform
     }
 
     private func removePanels() {
@@ -718,6 +914,7 @@ final class Preferences {
         static let isEnabled = "isEnabled"
         static let sensitivity = "sensitivity"
         static let appLanguage = AppLanguage.userDefaultsKey
+        static let blurStyle = "blurStyle"
     }
 
     var isEnabled: Bool {
@@ -761,6 +958,21 @@ final class Preferences {
             UserDefaults.standard.set(newValue.rawValue, forKey: Keys.appLanguage)
         }
     }
+
+    var blurStyle: BlurStyle {
+        get {
+            guard
+                let rawValue = UserDefaults.standard.string(forKey: Keys.blurStyle),
+                let value = BlurStyle(rawValue: rawValue)
+            else {
+                return .bookFlip
+            }
+            return value
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: Keys.blurStyle)
+        }
+    }
 }
 
 enum AppLanguage: String, CaseIterable {
@@ -778,6 +990,47 @@ enum AppLanguage: String, CaseIterable {
             L("language.chinese")
         case .en:
             L("language.english")
+        }
+    }
+}
+
+enum BlurStyle: String, CaseIterable {
+    case softGlass
+    case bookFlip
+
+    var title: String {
+        switch self {
+        case .softGlass:
+            L("blurStyle.softGlass")
+        case .bookFlip:
+            L("blurStyle.bookFlip")
+        }
+    }
+
+    var material: NSVisualEffectView.Material {
+        switch self {
+        case .softGlass:
+            .underWindowBackground
+        case .bookFlip:
+            .hudWindow
+        }
+    }
+
+    var dimAlpha: CGFloat {
+        switch self {
+        case .softGlass:
+            0.24
+        case .bookFlip:
+            0.26
+        }
+    }
+
+    var tintColor: NSColor {
+        switch self {
+        case .softGlass:
+            NSColor.white.withAlphaComponent(0.06)
+        case .bookFlip:
+            NSColor.white.withAlphaComponent(0.045)
         }
     }
 }

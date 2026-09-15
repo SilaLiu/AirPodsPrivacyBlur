@@ -31,6 +31,9 @@
 "settings.title" = "设置";
 "settings.heading" = "设置";
 "settings.language" = "语言";
+"settings.blurStyle" = "毛玻璃风格";
+"blurStyle.softGlass" = "柔和毛玻璃";
+"blurStyle.bookFlip" = "翻书毛玻璃";
 "window.title" = "AirPods 隐私模糊";
 "window.heading" = "AirPods 隐私模糊正在运行";
 "window.body" = "可以使用下方按钮，也可以使用菜单栏里的 AirPods 模糊。即使还没有 AirPods 运动数据，也可以先测试模糊效果。";
