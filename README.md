@@ -10,6 +10,7 @@ This is a small macOS prototype that uses AirPods head motion to blur your displ
 - 面向屏幕时保持清晰，转头超过阈值后自动模糊。
 - 支持所有已连接显示器，包括外接屏。
 - 毛玻璃遮罩支持淡入淡出，过渡更柔和。
+- AirPods 断开或摘下后会自动退出隐私模糊。
 - 遮罩为点击穿透，不影响键盘和鼠标继续操作原来的 App。
 - 菜单栏常驻控制，可开始追踪、校准、测试模糊、调整灵敏度。
 - 支持中文 / English，并可在应用内设置语言。
@@ -76,6 +77,7 @@ dist/AirPods Privacy Blur.app/Contents/MacOS/AirPodsPrivacyBlur
 - 支持高 / 中 / 低三档灵敏度。
 - 模糊遮罩会覆盖所有已连接屏幕。
 - 屏幕变更时会自动重建遮罩。
+- 追踪中断、耳机断开或长时间没有运动数据时会自动清除遮罩。
 - 屏幕共享时的效果取决于会议软件捕获的是整个显示器还是某个窗口。
 
 ## Notes

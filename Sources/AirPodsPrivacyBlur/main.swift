@@ -170,6 +170,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             trackingItem.title = L("menu.tracking.start")
             trackingButton?.title = L("menu.tracking.start")
             statusItemLabel.title = L("status.tracking.stopped")
+            angleItem.title = L("angle.empty")
+            blurOverlay.hide()
+            statusItem.button?.title = L("app.menu.title")
             return
         }
 
@@ -469,7 +472,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 }
 
 @MainActor
-final class HeadPoseMonitor {
+final class HeadPoseMonitor: NSObject, @preconcurrency CMHeadphoneMotionManagerDelegate {
     var onStateChange: (@MainActor (HeadPoseState) -> Void)?
 
     private var manager: CMHeadphoneMotionManager?
@@ -478,13 +481,18 @@ final class HeadPoseMonitor {
     private var blurEnterThreshold = Sensitivity.medium.thresholds.enter
     private var blurExitThreshold = Sensitivity.medium.thresholds.exit
     private var latestMotion: CMDeviceMotion?
+    private var staleMotionTimer: Timer?
+    private let staleMotionTimeout: TimeInterval = 2.8
 
     func start() {
         let manager = CMHeadphoneMotionManager()
+        manager.delegate = self
+        manager.startConnectionStatusUpdates()
         self.manager = manager
+        resetMotionTimeout()
 
         guard manager.isDeviceMotionAvailable else {
-            onStateChange?(HeadPoseState(statusText: L("status.motion.unavailable"), yawDegrees: nil, shouldBlur: false))
+            clearMotionState(statusKey: "status.motion.unavailable")
             return
         }
 
@@ -492,30 +500,38 @@ final class HeadPoseMonitor {
             guard let self else { return }
 
             if let error {
-                self.onStateChange?(HeadPoseState(statusText: error.localizedDescription, yawDegrees: nil, shouldBlur: false))
+                self.clearMotionState(statusText: error.localizedDescription)
                 return
             }
 
             guard let motion else {
-                self.onStateChange?(HeadPoseState(statusText: L("status.motion.waiting"), yawDegrees: nil, shouldBlur: false))
+                self.clearMotionState(statusKey: "status.motion.waiting")
+                self.resetMotionTimeout()
                 return
             }
 
             self.latestMotion = motion
+            self.resetMotionTimeout()
             self.process(motion)
         }
     }
 
     func stop() {
+        staleMotionTimer?.invalidate()
+        staleMotionTimer = nil
         manager?.stopDeviceMotionUpdates()
+        manager?.stopConnectionStatusUpdates()
+        manager?.delegate = nil
         manager = nil
+        latestMotion = nil
+        baselineYaw = nil
         isBlurred = false
     }
 
     func calibrateFacingScreen() {
         guard let motion = latestMotion else {
             baselineYaw = nil
-            onStateChange?(HeadPoseState(statusText: L("status.motion.calibrate.first"), yawDegrees: nil, shouldBlur: false))
+            clearMotionState(statusKey: "status.motion.calibrate.first")
             return
         }
 
@@ -527,6 +543,21 @@ final class HeadPoseMonitor {
     func updateThresholds(_ thresholds: BlurThresholds) {
         blurEnterThreshold = thresholds.enter
         blurExitThreshold = thresholds.exit
+    }
+
+    func headphoneMotionManagerDidConnect(_ manager: CMHeadphoneMotionManager) {
+        baselineYaw = nil
+        latestMotion = nil
+        clearMotionState(statusKey: "status.motion.waiting")
+        resetMotionTimeout()
+    }
+
+    func headphoneMotionManagerDidDisconnect(_ manager: CMHeadphoneMotionManager) {
+        staleMotionTimer?.invalidate()
+        staleMotionTimer = nil
+        baselineYaw = nil
+        latestMotion = nil
+        clearMotionState(statusKey: "status.motion.disconnected")
     }
 
     private func process(_ motion: CMDeviceMotion) {
@@ -546,6 +577,27 @@ final class HeadPoseMonitor {
 
         let status = String(format: L("status.facing.baseline"), yawDegrees)
         onStateChange?(HeadPoseState(statusText: status, yawDegrees: yawDegrees, shouldBlur: isBlurred))
+    }
+
+    private func resetMotionTimeout() {
+        staleMotionTimer?.invalidate()
+        staleMotionTimer = Timer.scheduledTimer(withTimeInterval: staleMotionTimeout, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.manager != nil else { return }
+                self.baselineYaw = nil
+                self.latestMotion = nil
+                self.clearMotionState(statusKey: "status.motion.disconnected")
+            }
+        }
+    }
+
+    private func clearMotionState(statusKey: String) {
+        clearMotionState(statusText: L(statusKey))
+    }
+
+    private func clearMotionState(statusText: String) {
+        isBlurred = false
+        onStateChange?(HeadPoseState(statusText: statusText, yawDegrees: nil, shouldBlur: false))
     }
 
     private func normalizedAngle(_ angle: Double) -> Double {

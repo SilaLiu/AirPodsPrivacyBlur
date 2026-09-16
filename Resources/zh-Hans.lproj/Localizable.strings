@@ -7,6 +7,7 @@
 "status.tracking.starting" = "正在启动 AirPods 追踪...";
 "status.motion.unavailable" = "AirPods 运动数据不可用";
 "status.motion.waiting" = "正在等待 AirPods 运动数据...";
+"status.motion.disconnected" = "AirPods 已断开，已退出隐私模糊。";
 "status.motion.calibrate.first" = "请戴上 AirPods 后再校准";
 "status.facing.baseline" = "相对正面角度：%.1f°";
 "status.motion.error" = "%@";
